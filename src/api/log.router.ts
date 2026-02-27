@@ -21,8 +21,9 @@ const auditRoute = createRoute({
 
 logRouter.use('/*', withAuditLog('logs'));
 
-logRouter.openapi(auditRoute, (c) => {
-  return c.json(logService.getLogs(), 200);
+logRouter.openapi(auditRoute, async (c) => {
+  const logs = await logService.getLogs(c.env.DB);
+  return c.json(logs, 200);
 });
 
 export { logRouter };

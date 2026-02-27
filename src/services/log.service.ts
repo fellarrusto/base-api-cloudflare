@@ -1,12 +1,7 @@
+import { getRepository } from '../db/database';
 import { AuditLog } from '../models/log.model';
 
-// stub — qui collegherai elasticsearch
-const logs: AuditLog[] = [];
-
-export function saveLog(log: AuditLog) {
-  logs.push(log);
-}
-
-export function getLogs(): AuditLog[] {
-  return logs;
+export async function getLogs(db: D1Database) {
+  const repo = getRepository(db, 'audit_logs');
+  return await repo.findMany() as AuditLog[];
 }

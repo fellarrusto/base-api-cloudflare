@@ -1,17 +1,19 @@
 import { MiddlewareHandler } from 'hono';
+import { getRepository } from '../db/database';
 
 export function withAuditLog(action: string): MiddlewareHandler {
   return async (c, next) => {
     const start = performance.now();
     await next();
-    const duration = performance.now() - start;
-    console.log(JSON.stringify({
+    const repo = getRepository(c.env.DB, 'audit_logs');
+    await repo.insertOne({
+      id: crypto.randomUUID(),
       action,
-      path: c.req.path,
+      endpoint: c.req.path,
       method: c.req.method,
       status: c.res.status,
-      duration_ms: Math.round(duration),
+      duration_ms: Math.round(performance.now() - start),
       timestamp: new Date().toISOString(),
-    }));
+    });
   };
 }
