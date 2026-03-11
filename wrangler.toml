@@ -1,4 +1,4 @@
-name = "sybilla-base-api"
+name = "base-api-cloudflare"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
