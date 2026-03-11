@@ -1,5 +1,5 @@
 import { MiddlewareHandler } from 'hono';
-import { getRepository } from '../db/database';
+import { getRepository } from '../../db/database';
 
 export function withAuditLog(action: string): MiddlewareHandler {
   return async (c, next) => {
