@@ -87,7 +87,7 @@ const updateUserRoute = createRoute({
   },
 });
 
-authRouter.use('/users/*', withAuth(), withRole('user'), withAuditLog('updateUser'));
+authRouter.use('/users/*', withAuth(), withRole('admin'), withAuditLog('updateUser'));
 
 authRouter.openapi(updateUserRoute, async (c) => {
   const { id } = c.req.valid('param');
