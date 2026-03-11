@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
-import { Env } from '../core/types';
-import { withAuditLog } from '../core/middleware';
+import { Env, AppVariables } from '../core/types';
+import { withAuditLog, withAuth } from '../core/middleware';
 import { HealthCheckResponseSchema } from '../models/health.model';
 import * as healthService from '../services/health.service';
 
-const healthRouter = new OpenAPIHono<{ Bindings: Env }>();
+const healthRouter = new OpenAPIHono<{ Bindings: Env; Variables: AppVariables }>();
 
 const checkRoute = createRoute({
   method: 'get',
@@ -19,7 +19,7 @@ const checkRoute = createRoute({
   },
 });
 
-healthRouter.use('/check', withAuditLog('health_check'));
+healthRouter.use('/check', withAuth(), withAuditLog('health_check'));
 
 healthRouter.openapi(checkRoute, (c) => {
   return c.json(healthService.check(c.env.API_VERSION), 200);

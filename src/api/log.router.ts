@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { Env } from '../core/types';
-import { withAuditLog } from '../core/middleware';
+import { Env, AppVariables } from '../core/types';
+import { withAuditLog, withAuth, withRole } from '../core/middleware';
 import { AuditLogSchema } from '../models/log.model';
 import * as logService from '../services/log.service';
 
-const logRouter = new OpenAPIHono<{ Bindings: Env }>();
+const logRouter = new OpenAPIHono<{ Bindings: Env; Variables: AppVariables }>();
 
 const auditRoute = createRoute({
   method: 'get',
@@ -19,7 +19,7 @@ const auditRoute = createRoute({
   },
 });
 
-logRouter.use('/*', withAuditLog('logs'));
+logRouter.use('/*', withAuth(), withRole('admin'), withAuditLog('logs'));
 
 logRouter.openapi(auditRoute, async (c) => {
   const logs = await logService.getLogs(c.env.DB);

@@ -5,6 +5,9 @@ compatibility_date = "2024-01-01"
 [vars]
 LOG_LEVEL = "info"
 API_VERSION = "1.1.0"
+AUTH_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+AUTH_ISSUER = "https://securetoken.google.com/sybilla-firebase"
+AUTH_AUDIENCE = "sybilla-firebase"
 
 [[d1_databases]]
 binding = "DB"
