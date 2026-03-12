@@ -15,18 +15,33 @@ export class D1Repository implements BaseRepository {
     return (await this.db.prepare(`SELECT * FROM ${this.table} LIMIT ?`).bind(limit).all()).results;
   }
 
+  async findManyBy(filters: Record<string, any>, limit = 100) {
+    const keys = Object.keys(filters);
+    if (keys.length === 0) return this.findMany({}, limit);
+    const where = keys.map((k) => `${k} = ?`).join(' AND ');
+    const values = Object.values(filters);
+    return (
+      await this.db
+        .prepare(`SELECT * FROM ${this.table} WHERE ${where} LIMIT ?`)
+        .bind(...values, limit)
+        .all()
+    ).results;
+  }
+
   async insertOne(data: Record<string, any>) {
     const keys = Object.keys(data);
     const placeholders = keys.map(() => '?').join(', ');
-    await this.db.prepare(`INSERT INTO ${this.table} (${keys.join(', ')}) VALUES (${placeholders})`)
+    await this.db
+      .prepare(`INSERT INTO ${this.table} (${keys.join(', ')}) VALUES (${placeholders})`)
       .bind(...Object.values(data))
       .run();
     return data.id;
   }
 
   async updateOne(id: string, data: Record<string, any>) {
-    const sets = Object.keys(data).map(k => `${k} = ?`).join(', ');
-    const result = await this.db.prepare(`UPDATE ${this.table} SET ${sets} WHERE id = ?`)
+    const sets = Object.keys(data).map((k) => `${k} = ?`).join(', ');
+    const result = await this.db
+      .prepare(`UPDATE ${this.table} SET ${sets} WHERE id = ?`)
       .bind(...Object.values(data), id)
       .run();
     return result.meta.changes > 0;
