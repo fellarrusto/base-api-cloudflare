@@ -47,6 +47,19 @@ export class D1Repository implements BaseRepository {
     return result.meta.changes > 0;
   }
 
+  async updateManyBy(filters: Record<string, any>, data: Record<string, any>) {
+    const sets = Object.keys(data).map((k) => `${k} = ?`).join(', ');
+    const where = Object.keys(filters).map((k) => `${k} = ?`).join(' AND ');
+    const sql = Object.keys(filters).length > 0
+      ? `UPDATE ${this.table} SET ${sets} WHERE ${where}`
+      : `UPDATE ${this.table} SET ${sets}`;
+    const values = Object.keys(filters).length > 0
+      ? [...Object.values(data), ...Object.values(filters)]
+      : Object.values(data);
+    const result = await this.db.prepare(sql).bind(...values).run();
+    return result.meta.changes;
+  }
+
   async deleteOne(id: string) {
     const result = await this.db.prepare(`DELETE FROM ${this.table} WHERE id = ?`).bind(id).run();
     return result.meta.changes > 0;
