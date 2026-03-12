@@ -7,6 +7,10 @@ export class D1Repository implements BaseRepository {
     return await this.db.prepare(`SELECT * FROM ${this.table} WHERE id = ?`).bind(id).first();
   }
 
+  async findOneBy(field: string, value: string) {
+    return await this.db.prepare(`SELECT * FROM ${this.table} WHERE ${field} = ?`).bind(value).first();
+  }
+
   async findMany(_filters?: Record<string, any>, limit = 100) {
     return (await this.db.prepare(`SELECT * FROM ${this.table} LIMIT ?`).bind(limit).all()).results;
   }
