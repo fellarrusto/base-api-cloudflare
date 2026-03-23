@@ -105,6 +105,8 @@ Il deploy del Worker viene eseguito dalla Cloudflare UI. Assicurati che:
 | **Hono** | ^4.4.0 | Framework web leggero e veloce |
 | **Zod + Zod OpenAPI** | ^3.22.4 + ^0.14.9 | Validazione e generazione docs OpenAPI 3.0 |
 | **Cloudflare D1** | Binding `DB` | Database SQL (SQLite) serverless |
+| **Drizzle ORM** | ^0.45.1 | ORM type-safe per D1/SQLite |
+| **Drizzle Kit** | ^0.31.10 | CLI per generazione migration |
 | **Wrangler** | ^3.57.0 | CLI per sviluppo e deployment |
 | **TypeScript** | ^5.3.3 | Type safety |
 
@@ -115,8 +117,9 @@ base-api-cloudflare/
 ├── package.json                      # Dipendenze e script
 ├── tsconfig.json                     # Configurazione TypeScript
 ├── wrangler.toml                     # Configurazione Cloudflare
-├── migrations/                       # Migrazioni SQL
-│   └── 0001_create_audit_logs.sql
+├── migrations/                       # Migrazioni SQL (generate da Drizzle Kit)
+│   └── 0000_init.sql
+├── drizzle.config.ts                 # Configurazione Drizzle Kit
 └── src/
     ├── index.ts                      # Entry point
     ├── api/                          # Router e endpoint definitions
@@ -134,7 +137,11 @@ base-api-cloudflare/
     ├── db/                           # Layer database
     │   ├── database.ts               # Factory pattern
     │   ├── base.repository.ts        # Interfaccia repository
-    │   └── d1.repository.ts          # Implementazione D1
+    │   ├── d1.repository.ts          # Implementazione D1
+    │   └── schema/                   # Schema Drizzle (source of truth per le tabelle)
+    │       ├── index.ts              # Re-export di tutti gli schema
+    │       ├── audit-logs.schema.ts
+    │       └── users.schema.ts
     └── core/                         # Configurazioni e utility
         ├── types.ts                  # Type Env e types globali
         ├── config.ts                 # Configurazioni app
@@ -537,66 +544,80 @@ export class D1Repository implements BaseRepository {
 
 ## Migrazioni Database
 
+Le migration sono generate automaticamente da **Drizzle Kit** a partire dagli schema in `src/db/schema/`. Non scrivere SQL a mano: modifica lo schema TS e genera.
+
+### Flusso Migration
+
+```
+Modifica src/db/schema/*.schema.ts
+    ↓
+npm run db:generate        ← Drizzle Kit genera il file SQL in migrations/
+    ↓
+npm run db:migrate:local   ← Applica al DB locale
+npm run db:migrate:remote  ← Applica al DB remoto (production)
+```
+
 ### Struttura Migrazioni
 
 ```
 migrations/
-├── 0001_create_audit_logs.sql
-├── 0002_create_resources.sql
-├── 0003_add_index_to_resources.sql
-└── 0004_add_user_table.sql
+├── 0000_init.sql                     # Generato da Drizzle Kit
+└── 0001_add_resources.sql            # Ogni modifica allo schema genera un nuovo file
 ```
 
-### Convenzioni
+### Aggiungere una Nuova Tabella
 
-- **Prefisso sequenziale**: `NNNN_` (4 digit zero-padded)
-- **Naming**: snake_case descrittivo `create_table`, `add_column`, `add_index`
-- **Una responsabilità per migration**: non mescolare CREATE TABLE con ALTER
-- **SQL idempotente**: Usare `IF NOT EXISTS` dove appropriato
-- **Commenti**: Aggiungere descrizione all'inizio
+1. **Crea lo schema** `src/db/schema/resources.schema.ts`:
 
-### Template Migration
+```typescript
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-```sql
--- 0002_create_resources.sql
--- Create the main resources table with timestamps and status
-CREATE TABLE IF NOT EXISTS resources (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT,
-  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived')),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  created_by TEXT
-);
-
--- Indici per performance
-CREATE INDEX IF NOT EXISTS idx_resources_status ON resources(status);
-CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at);
+export const resources = sqliteTable('resources', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  created_at: text('created_at').notNull(),
+  updated_at: text('updated_at').notNull(),
+});
 ```
 
-### Eseguire Migrazioni
+2. **Esporta dallo schema index** `src/db/schema/index.ts`:
+
+```typescript
+export * from './audit-logs.schema';
+export * from './users.schema';
+export * from './resources.schema';  // ← aggiungi
+```
+
+3. **Genera e applica la migration**:
 
 ```bash
-# Migrazioni si eseguono automaticamente con Wrangler
-wrangler d1 migrations apply sybilla-db --local
-wrangler d1 migrations apply sybilla-db                    # Production
+npm run db:generate        # crea migrations/NNNN_*.sql
+npm run db:migrate:local   # applica in locale
+npm run db:migrate:remote  # applica in produzione
+```
+
+### Aggiungere una Colonna a una Tabella Esistente
+
+1. Modifica lo schema in `src/db/schema/*.schema.ts` aggiungendo il campo
+2. `npm run db:generate` — Drizzle genera un `ALTER TABLE ... ADD COLUMN`
+3. Applica con `db:migrate:local` / `db:migrate:remote`
+
+> **Attenzione**: colonne `NOT NULL` senza default causeranno errore se la tabella ha già righe. Aggiungi sempre un `.default(...)` o usa nullable.
+
+### Comandi DB
+
+```bash
+npm run db:generate        # genera migration dal diff dello schema
+npm run db:migrate:local   # applica al DB locale
+npm run db:migrate:remote  # applica al DB remoto (production)
 ```
 
 ### Esempio Completo: Aggiungere Nuova Tabella
 
-1. **Create migration file** `migrations/NNNN_create_table.sql`:
-```sql
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX idx_users_email ON users(email);
-```
-
-2. **Create model** `src/models/user.model.ts`:
+1. **Crea schema** `src/db/schema/resources.schema.ts` (vedi sopra)
+2. **Esporta** da `src/db/schema/index.ts`
+3. **Genera e applica** la migration
+4. **Create model** `src/models/user.model.ts`:
 ```typescript
 import { z } from '@hono/zod-openapi';
 
@@ -904,11 +925,14 @@ npm run build
 # Deploy a Cloudflare
 npm run deploy
 
-# Migrazioni locali
-wrangler d1 migrations apply sybilla-db --local
+# Genera migration dal diff dello schema
+npm run db:generate
 
-# Migrazioni production
-wrangler d1 migrations apply sybilla-db
+# Applica migration in locale
+npm run db:migrate:local
+
+# Applica migration in produzione
+npm run db:migrate:remote
 ```
 
 ### CORS e Security
@@ -935,13 +959,14 @@ app.use('*', withCORS());
 
 Quando aggiungi una nuova feature segui questi step in ordine:
 
-- [ ] **1. Crea migration** SQL in `migrations/NNNN_*.sql`
-- [ ] **2. Definisci model** in `src/models/feature.model.ts` con Zod schema
-- [ ] **3. Scrivi service** in `src/services/feature.service.ts` con logica business
-- [ ] **4. Crea router** in `src/api/feature.router.ts` con OpenAPI routes
-- [ ] **5. Registra router** in `src/api/index.ts`
-- [ ] **6. Test localmente** con `npm run dev` e Swagger UI at `/docs`
-- [ ] **7. Deploy** con `npm run deploy`
+- [ ] **1. Crea schema Drizzle** in `src/db/schema/feature.schema.ts` ed esportalo da `index.ts`
+- [ ] **2. Genera e applica migration** con `npm run db:generate` + `npm run db:migrate:local`
+- [ ] **3. Definisci model** in `src/models/feature.model.ts` con Zod schema
+- [ ] **4. Scrivi service** in `src/services/feature.service.ts` con logica business
+- [ ] **5. Crea router** in `src/api/feature.router.ts` con OpenAPI routes
+- [ ] **6. Registra router** in `src/api/index.ts`
+- [ ] **7. Test localmente** con `npm run dev` e Swagger UI at `/docs`
+- [ ] **8. Deploy** — applica migration remote (`npm run db:migrate:remote`) poi `npm run deploy`
 
 ## Troubleshooting
 
