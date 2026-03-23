@@ -10,6 +10,7 @@ export type Env = {
   CORS_ORIGINS: string;
   API_TITLE: string;
   SWAGGER_ENABLED: string;
+  EXAMPLE_SECRET: string;
 };
 
 export type AppVariables = {

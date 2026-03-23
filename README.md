@@ -2,6 +2,102 @@
 
 API REST scalabile su Cloudflare Workers con architettura a layer, validazione OpenAPI e database D1.
 
+## Setup Nuovo Progetto
+
+### 1. Prerequisiti
+
+```bash
+npm install -g wrangler
+wrangler login
+```
+
+### 2. Configura wrangler.toml
+
+Aggiorna `name`, `database_name` e le variabili in `[vars]`:
+
+```toml
+name = "my-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+LOG_LEVEL = "info"
+API_VERSION = "1.0.0"
+API_TITLE = "My API"
+SWAGGER_ENABLED = "true"
+CORS_ORIGINS = "https://myapp.com"
+AUTH_JWKS_URL = "..."
+AUTH_ISSUER = "..."
+AUTH_AUDIENCE = "..."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-db"
+database_id = ""        # lascia vuoto, lo ottieni al passo successivo
+
+[dev]
+port = 3000
+```
+
+### 3. Crea il Database D1
+
+```bash
+wrangler d1 create my-db
+```
+
+Copia il `database_id` restituito e incollalo in `wrangler.toml`.
+
+### 4. Esegui le Migrazioni
+
+```bash
+# Locale
+wrangler d1 migrations apply my-db --local
+
+# Production
+wrangler d1 migrations apply my-db
+```
+
+### 5. Configura i Secret
+
+I secret **non** vanno in `wrangler.toml` (è pubblico su git). Usa `.dev.vars` per locale e `wrangler secret put` per production.
+
+**Locale** — crea `.dev.vars` (già in `.gitignore`):
+```
+MY_SECRET=valore_locale
+ALTRO_SECRET=altro_valore
+```
+
+**Production**:
+```bash
+wrangler secret put MY_SECRET
+# ti chiede il valore interattivamente
+```
+
+Dichiarali in `src/core/types.ts`:
+```typescript
+export type Env = {
+  MY_SECRET: string;
+  // ...
+};
+```
+
+### 6. Sviluppo Locale
+
+```bash
+npm install
+npm run dev
+# API disponibile su http://localhost:3000
+# Swagger UI su http://localhost:3000/docs
+```
+
+### 7. Deploy
+
+Il deploy del Worker viene eseguito dalla Cloudflare UI. Assicurati che:
+- Le migrazioni production siano applicate (`wrangler d1 migrations apply my-db`)
+- I secret production siano impostati (`wrangler secret put ...`)
+
+---
+
 ## Stack Tecnologico
 
 | Tecnologia | Versione | Scopo |

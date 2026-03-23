@@ -19,10 +19,10 @@ const checkRoute = createRoute({
   },
 });
 
-healthRouter.use('/check', withAuth(), withAuditLog('health_check'));
+healthRouter.use('/check', withAuditLog('health_check'));
 
 healthRouter.openapi(checkRoute, (c) => {
-  return c.json(healthService.check(c.env.API_VERSION), 200);
+  return c.json(healthService.check(c.env.API_VERSION, c.env.EXAMPLE_SECRET), 200);
 });
 
 export { healthRouter };
