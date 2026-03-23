@@ -32,7 +32,9 @@ base-api-cloudflare/
     │   └── log.service.ts
     ├── models/                       # Schemi Zod + type definitions
     │   ├── health.model.ts
-    │   └── log.model.ts
+    │   ├── log.model.ts
+    │   ├── user.model.ts
+    │   └── helpers.ts                # Helper Zod per booleani D1 (boolIntIn/Out)
     ├── db/                           # Layer database
     │   ├── database.ts               # Factory pattern
     │   ├── base.repository.ts        # Interfaccia repository
@@ -284,6 +286,33 @@ export const ResourceUpdateSchema = ResourceCreateSchema.partial();
 export type ResourceUpdateInput = z.infer<typeof ResourceUpdateSchema>;
 ```
 
+### Campi Booleani con D1
+
+D1/SQLite non ha un tipo booleano nativo — i booleani vengono salvati come `INTEGER` (`0`/`1`). Usa gli helper in `src/models/helpers.ts` per gestire la conversione automaticamente tramite Zod:
+
+```typescript
+import { boolIntIn, boolIntInOptional, boolIntOut } from './helpers';
+
+export const ResourceSchema = z.object({
+  id: z.string().uuid(),
+  attivo: boolIntOut.openapi({ example: true }),   // DB 0/1 → response true/false
+});
+
+export const ResourceCreateSchema = z.object({
+  attivo: boolIntIn.default(1).openapi({ example: true }),  // API bool → DB 0/1
+});
+
+export const ResourceUpdateSchema = z.object({
+  attivo: boolIntInOptional,  // opzionale
+});
+```
+
+- `boolIntOut` — usato negli schema di **response**: converte `0`/`1` dal DB a `true`/`false`
+- `boolIntIn` — usato negli schema di **input** (create): converte `true`/`false` dall'API a `0`/`1`
+- `boolIntInOptional` — come `boolIntIn` ma il campo è opzionale (update)
+
+La conversione avviene automaticamente quando il service chiama `Schema.parse(dbRow)`.
+
 ### Convenzioni Models
 
 - **File naming**: `{entity}.model.ts`
@@ -324,19 +353,16 @@ Risultati SQL
 // src/db/base.repository.ts
 export interface BaseRepository {
   findOne(id: string): Promise<Record<string, any> | null>;
-  
-  findMany(
-    filters?: Record<string, any>, 
-    limit?: number
-  ): Promise<Record<string, any>[]>;
-  
+  findOneBy(field: string, value: string): Promise<Record<string, any> | null>;
+
+  findMany(filters?: Record<string, any>, limit?: number): Promise<Record<string, any>[]>;
+  findManyBy(filters: Record<string, any>, limit?: number): Promise<Record<string, any>[]>;
+
   insertOne(data: Record<string, any>): Promise<string>;
-  
-  updateOne(
-    id: string, 
-    data: Record<string, any>
-  ): Promise<boolean>;
-  
+
+  updateOne(id: string, data: Record<string, any>): Promise<boolean>;
+  updateManyBy(filters: Record<string, any>, data: Record<string, any>): Promise<number>;
+
   deleteOne(id: string): Promise<boolean>;
 }
 ```

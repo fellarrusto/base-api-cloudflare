@@ -7,6 +7,9 @@ export type Env = {
   AUTH_JWKS_URL: string;
   AUTH_ISSUER: string;
   AUTH_AUDIENCE: string;
+  CORS_ORIGINS: string;
+  API_TITLE: string;
+  SWAGGER_ENABLED: string;
 };
 
 export type AppVariables = {
