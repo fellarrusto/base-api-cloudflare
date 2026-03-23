@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.4.1",
@@ -13,7 +16,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240512.0",
+    "@vitest/coverage-v8": "^4.1.0",
     "typescript": "^5.3.3",
+    "vitest": "^4.1.0",
     "wrangler": "^3.57.0"
   }
 }
