@@ -9,7 +9,8 @@
     "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.4.1",
@@ -19,7 +20,9 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20240512.0",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "^5.3.3",

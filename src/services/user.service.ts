@@ -1,54 +1,70 @@
-import { getRepository } from '../db/database';
-import { User, UserCreateInput, UserUpdateInput, fromDbRow } from '../models/user.model';
+import { ConflictError, NotFoundError } from '../core/exceptions';
+import { UserInDB } from '../models/user.model';
+import { UserRepository } from '../repositories/user.repository';
+import { User, UserCreateInput, UserUpdateInput } from '../schemas/user.schema';
+import type { Identity } from './auth.service';
 
 export async function getBySubject(db: D1Database, subject: string): Promise<User | null> {
-  const row = await db
-    .prepare('SELECT * FROM users WHERE subject = ?')
-    .bind(subject)
-    .first();
-  return row ? fromDbRow(row) : null;
+  const user = await new UserRepository(db).findBySubject(subject);
+  return user ? toResponse(user) : null;
 }
 
-export async function create(
-  db: D1Database,
-  subject: string,
-  email: string,
-  input: UserCreateInput,
-): Promise<User> {
+/**
+ * Create the user for an identity. New users get the "user" role.
+ *
+ * @throws ConflictError subject or email already registered
+ */
+export async function register(db: D1Database, identity: Identity, input: UserCreateInput): Promise<User> {
+  const repository = new UserRepository(db);
+  if (await repository.findBySubject(identity.subject)) {
+    throw new ConflictError('User already registered');
+  }
+  if (await repository.existsByEmail(identity.email)) {
+    throw new ConflictError('Email already registered');
+  }
+
   const now = new Date().toISOString();
-  const data = {
+  const user = await repository.create({
     id: crypto.randomUUID(),
-    subject,
-    email,
+    subject: identity.subject,
+    email: identity.email,
     name: input.name,
     roles: JSON.stringify(['user']),
     active_services: JSON.stringify([]),
     created_at: now,
     updated_at: now,
-  };
-  const repo = getRepository(db, 'users');
-  await repo.insertOne(data);
-  return fromDbRow(data);
+  });
+  return toResponse(user);
 }
 
-export async function update(db: D1Database, id: string, input: UserUpdateInput): Promise<void> {
-  const fields: string[] = [];
-  const values: any[] = [];
-
+/**
+ * Update the fields sent and return the updated user.
+ *
+ * @throws NotFoundError the user does not exist
+ */
+export async function update(db: D1Database, id: string, input: UserUpdateInput): Promise<User> {
+  const repository = new UserRepository(db);
+  const fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value !== undefined) {
-      fields.push(`${key} = ?`);
-      values.push(Array.isArray(value) ? JSON.stringify(value) : value);
+      fields[key] = Array.isArray(value) ? JSON.stringify(value) : value;
     }
   }
 
-  if (fields.length === 0) return;
+  if (Object.keys(fields).length > 0) {
+    fields.updated_at = new Date().toISOString();
+    if (!(await repository.update(id, fields))) throw new NotFoundError('User not found');
+  }
 
-  fields.push('updated_at = ?');
-  values.push(new Date().toISOString());
-  values.push(id);
+  const user = await repository.findById(id);
+  if (!user) throw new NotFoundError('User not found');
+  return toResponse(user);
+}
 
-  await db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`)
-    .bind(...values)
-    .run();
+function toResponse(user: UserInDB): User {
+  return {
+    ...user,
+    roles: JSON.parse(user.roles || '["user"]'),
+    active_services: JSON.parse(user.active_services || '[]'),
+  };
 }

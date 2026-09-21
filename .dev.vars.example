@@ -1,0 +1,7 @@
+# Local secrets and overrides for `wrangler dev`: copy to .dev.vars (git-ignored).
+# Production secrets: `wrangler secret put <NAME>`.
+
+EXAMPLE_SECRET=change-me
+
+# Accept "mock:<user_id>:<role1>,<role2>" bearer tokens. Local testing only, never in production
+AUTH_MOCK_ENABLED=true
