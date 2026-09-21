@@ -1,6 +1,8 @@
-import { BaseRepository } from './base.repository';
-import { D1Repository } from './d1.repository';
+import { drizzle } from 'drizzle-orm/d1';
 
-export function getRepository(db: D1Database, table: string): BaseRepository {
-  return new D1Repository(db, table);
+// Storage factory: the only place that knows which driver is active. Used by repositories only.
+export function getDb(d1: D1Database) {
+  return drizzle(d1);
 }
+
+export type Database = ReturnType<typeof getDb>;

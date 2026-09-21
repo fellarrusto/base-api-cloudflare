@@ -11,11 +11,20 @@ AUTH_AUDIENCE = "sybilla-firebase"
 CORS_ORIGINS = "*"
 API_TITLE = "Base API"
 SWAGGER_ENABLED = "true"
+AUDIT_LOG_RETENTION_DAYS = "90"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "sybilla-db"
 database_id = "5dfeef5a-9a22-4735-a35c-8dcb21a23c33"
+
+# Scheduled jobs (src/jobs): the cron string must match a key of JOBS
+[triggers]
+crons = ["0 3 * * *"]
+
+# Workers Logs: collects the structured logs written by src/core/logger.ts
+[observability]
+enabled = true
 
 [dev]
 port = 3000

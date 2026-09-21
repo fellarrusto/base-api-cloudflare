@@ -8,6 +8,13 @@
       "when": 1774276123661,
       "tag": "0000_clear_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790003719769,
+      "tag": "0001_audit_log_user_metadata_index",
+      "breakpoints": true
     }
   ]
 }

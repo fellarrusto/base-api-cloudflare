@@ -1,89 +1,81 @@
-// Verifica JWT generica via JWKS — funziona con qualsiasi IDP (Firebase, Auth0, Keycloak, Cognito...)
+import { InvalidInputError, UnauthorizedError } from '../core/exceptions';
+import { logger } from '../core/logger';
+import { Env } from '../core/types';
+import { getTokenVerifier } from '../integrations/clients';
+import { User, UserCreateInput } from '../schemas/user.schema';
+import * as userService from './user.service';
 
-export interface TokenPayload {
-  sub: string;
-  email?: string;
-  name?: string;
-  iss: string;
-  aud: string | string[];
-  exp: number;
-  iat: number;
-  [key: string]: unknown;
+const MOCK_TOKEN_PREFIX = 'mock:';
+
+/** Who the token belongs to, according to the identity provider. */
+export interface Identity {
+  subject: string;
+  email: string;
 }
 
-interface JWK {
-  kty: string;
-  kid: string;
-  n: string;
-  e: string;
-  alg?: string;
-  use?: string;
-}
-
-interface JWKSResponse {
-  keys: JWK[];
-}
-
-let cachedJwks: { keys: JWK[]; expiry: number } | null = null;
-
-async function getJwks(jwksUrl: string): Promise<JWK[]> {
-  if (cachedJwks && Date.now() < cachedJwks.expiry) {
-    return cachedJwks.keys;
+/**
+ * Resolve the registered user behind a bearer token.
+ *
+ * With AUTH_MOCK_ENABLED=true, "mock:<user_id>:<role1>,<role2>" tokens return a
+ * synthetic user with those roles, without touching the database.
+ *
+ * @throws UnauthorizedError invalid token or user not registered
+ */
+export async function authenticate(env: Env, token: string): Promise<User> {
+  if (isMockToken(env, token)) {
+    return mockUser(token);
   }
-  const res = await fetch(jwksUrl);
-  const data = await res.json() as JWKSResponse;
-  const cacheControl = res.headers.get('cache-control') || '';
-  const maxAge = parseInt(cacheControl.match(/max-age=(\d+)/)?.[1] || '3600');
-  cachedJwks = { keys: data.keys, expiry: Date.now() + maxAge * 1000 };
-  return data.keys;
+  const identity = await verifyIdentity(env, token);
+  const user = await userService.getBySubject(env.DB, identity.subject);
+  if (!user) throw new UnauthorizedError('User not registered');
+  return user;
 }
 
-function base64UrlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-  const binary = atob(padded);
-  return Uint8Array.from(binary, c => c.charCodeAt(0));
+/**
+ * Register the caller of an identity provider token as a new user.
+ *
+ * @throws UnauthorizedError invalid token
+ * @throws InvalidInputError the token has no email claim
+ * @throws ConflictError already registered
+ */
+export async function register(env: Env, token: string, input: UserCreateInput): Promise<User> {
+  const identity = await verifyIdentity(env, token);
+  return await userService.register(env.DB, identity, input);
 }
 
-async function importJwk(jwk: JWK): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'jwk',
-    { kty: jwk.kty, n: jwk.n, e: jwk.e },
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['verify'],
-  );
+async function verifyIdentity(env: Env, token: string): Promise<Identity> {
+  if (isMockToken(env, token)) {
+    const { userId } = parseMockToken(token);
+    return { subject: userId, email: `${userId}@mock.local` };
+  }
+  const payload = await getTokenVerifier(env).verify(token);
+  if (!payload.email) throw new InvalidInputError('The token has no email claim');
+  return { subject: payload.sub, email: payload.email };
 }
 
-export interface VerifyOptions {
-  jwksUrl: string;
-  issuer: string;
-  audience: string;
+function isMockToken(env: Env, token: string): boolean {
+  if (env.AUTH_MOCK_ENABLED !== 'true' || !token.startsWith(MOCK_TOKEN_PREFIX)) return false;
+  logger.warn('Mock bearer token accepted: AUTH_MOCK_ENABLED must never be set in production');
+  return true;
 }
 
-export async function verifyToken(token: string, opts: VerifyOptions): Promise<TokenPayload> {
-  const parts = token.split('.');
-  if (parts.length !== 3) throw new Error('Invalid token format');
+function parseMockToken(token: string): { userId: string; roles: string[] } {
+  const [userId, roles = ''] = token.slice(MOCK_TOKEN_PREFIX.length).split(':');
+  if (!userId) throw new UnauthorizedError('Invalid mock token, expected mock:<user_id>:<role1>,<role2>');
+  return { userId, roles: roles.split(',').map((r) => r.trim()).filter(Boolean) };
+}
 
-  const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1]))) as TokenPayload;
-
-  // Claims validation
-  if (payload.iss !== opts.issuer) throw new Error('Invalid issuer');
-  const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-  if (!aud.includes(opts.audience)) throw new Error('Invalid audience');
-  if (payload.exp < Date.now() / 1000) throw new Error('Token expired');
-
-  // Signature verification via JWKS
-  const keys = await getJwks(opts.jwksUrl);
-  const jwk = keys.find(k => k.kid === header.kid);
-  if (!jwk) throw new Error('Unknown signing key');
-
-  const key = await importJwk(jwk);
-  const signature = base64UrlDecode(parts[2]);
-  const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, data);
-  if (!valid) throw new Error('Invalid signature');
-
-  return payload;
+function mockUser(token: string): User {
+  const { userId, roles } = parseMockToken(token);
+  const now = new Date().toISOString();
+  return {
+    id: userId,
+    subject: userId,
+    email: `${userId}@mock.local`,
+    name: userId,
+    roles,
+    active_services: [],
+    created_at: now,
+    updated_at: now,
+  };
 }
